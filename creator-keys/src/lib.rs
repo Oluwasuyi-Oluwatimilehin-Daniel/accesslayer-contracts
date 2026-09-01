@@ -82,6 +82,13 @@ pub enum ContractError {
     GlobalTradingHalted = 54,
     FrozenBalanceExceeded = 55,
     FreezeQuantityExceedsBalance = 56,
+    SplitTooHigh = 57,
+    SnapshotAlreadyExists = 58,
+    SnapshotHolderLimitExceeded = 59,
+    KeyAlreadyInitialised = 60,
+    NameTooLong = 61,
+    BioTooLong = 62,
+    FlashLoanDetected = 63,
 }
 
 /// Errors raised by the staking lifecycle entrypoints
@@ -111,20 +118,32 @@ pub enum StakingError {
     /// The contract is paused.
     ProtocolPaused = 8,
     GlobalTradingHalted = 51,
-    /// `set_co_creator`'s `split_bps` exceeded the 9000 (90%) cap (issue #782).
-    SplitTooHigh = 52,
-    /// `take_snapshot` called with a `snapshot_id` already used for the creator (issue #778).
-    SnapshotAlreadyExists = 53,
-    /// `take_snapshot`'s `holders` list exceeded [`MAX_SNAPSHOT_HOLDERS`] (issue #778).
-    SnapshotHolderLimitExceeded = 54,
-    /// `initialise_key` called for a `creator` that already has metadata (issue #779).
-    KeyAlreadyInitialised = 55,
-    /// `initialise_key`'s `name` exceeded 64 bytes (issue #779).
-    NameTooLong = 56,
-    /// `initialise_key`'s `bio` exceeded 256 bytes (issue #779).
-    BioTooLong = 57,
-    /// `sell_key` attempted in the same ledger as the holder's last buy (issue #781).
-    FlashLoanDetected = 58,
+    FrozenBalanceExceeded = 52,
+    FreezeQuantityExceedsBalance = 53,
+}
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+/// Error variants for the co-creator removal, pre-launch auction, and
+/// staking reward claim entrypoints.
+///
+/// These live in a separate error type from [`ContractError`] rather than as
+/// additional variants there: the Soroban contract spec format caps a single
+/// `#[contracterror]` enum at 50 cases (`SCSpecUDTErrorEnumV0.cases<50>`),
+/// and `ContractError` is already at that limit.
+pub enum FeatureError {
+    Unauthorized = 1,
+    NotRegistered = 2,
+    Overflow = 3,
+    ProtocolPaused = 4,
+    NotPositiveAmount = 5,
+    NoCoCreatorSet = 6,
+    AuctionAlreadyStarted = 7,
+    NoAuctionConfigured = 8,
+    InvalidAuctionConfig = 9,
+    StakeLockActive = 10,
+    NoStakeFound = 11,
 }
 
 pub mod fee {
@@ -495,10 +514,6 @@ pub mod constants {
 
         pub fn holder_cap_bps(creator: &Address) -> DataKey {
             DataKey::HolderCapBps(creator.clone())
-        }
-
-        pub fn last_buy_timestamp(creator: &Address, holder: &Address) -> DataKey {
-            DataKey::LastBuyTimestamp(creator.clone(), holder.clone())
         }
 
         pub fn royalty_config(creator: &Address) -> DataKey {
@@ -939,6 +954,8 @@ pub enum DataKey {
     /// (creator, holder) -> timestamp of the holder's most recent buy, used by
     /// the anti-flash-trade sell lockup window (#784).
     LastBuyTimestamp(Address, Address),
+    ProtocolFeeBps,
+    HolderCapBps(Address),
     LockupDurationSecs,
     QuorumBps(Address),
     GlobalTradingPaused,
