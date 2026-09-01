@@ -48,6 +48,7 @@ fn test_sell_within_launch_window_applies_penalty() {
 
     // Sell within the launch window — no ledger advance.
     let balance_before = client.get_staking_rewards_pool(&creator);
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &buyer, &None);
 
     // The staking rewards pool should increase from the penalty going to staking pool.
@@ -72,6 +73,7 @@ fn test_sell_after_launch_window_no_penalty() {
 
     // Sell after the window — only standard fee is added, no launch penalty.
     let balance_before = client.get_staking_rewards_pool(&creator);
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &buyer, &None);
     let balance_after = client.get_staking_rewards_pool(&creator);
 
@@ -93,6 +95,7 @@ fn test_set_launch_penalty_custom_bps() {
 
     let buyer = Address::generate(&env);
     client.buy_key(&creator, &buyer, &KEY_PRICE, &None);
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &buyer, &None);
 
     // The penalty applied should be 10% instead of the default 5%.

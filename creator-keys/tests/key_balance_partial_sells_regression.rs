@@ -6,7 +6,10 @@
 mod contract_test_env;
 
 use contract_test_env::{register_creator_keys, register_test_creator, set_key_price_for_tests};
-use soroban_sdk::{testutils::Address as _, Address};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address,
+};
 
 #[test]
 fn test_key_balance_decrements_correctly_after_each_partial_sell() {
@@ -25,14 +28,17 @@ fn test_key_balance_decrements_correctly_after_each_partial_sell() {
     assert_eq!(client.get_key_balance(&creator, &holder), 5);
 
     // Partial sell 1: sell 1 key → balance should be 4.
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &holder, &None);
     assert_eq!(client.get_key_balance(&creator, &holder), 4);
 
     // Partial sell 2: sell 1 key → balance should be 3.
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &holder, &None);
     assert_eq!(client.get_key_balance(&creator, &holder), 3);
 
     // Partial sell 3: sell 1 key → balance should be 2.
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &holder, &None);
     assert_eq!(client.get_key_balance(&creator, &holder), 2);
 

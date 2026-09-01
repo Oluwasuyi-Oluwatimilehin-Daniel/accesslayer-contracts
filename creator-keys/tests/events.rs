@@ -2,13 +2,14 @@
 
 use creator_keys::{events, CreatorKeysContract, CreatorKeysContractClient};
 use soroban_sdk::{
-    testutils::{Address as _, Events},
+    testutils::{Address as _, Events, Ledger},
     Address, Env, IntoVal, String, Symbol, Val, Vec,
 };
 
 const KEY_PRICE: i128 = 100;
 
 struct EventFixture<'a> {
+    env: &'a Env,
     client: CreatorKeysContractClient<'a>,
     creator: Address,
 }
@@ -33,7 +34,11 @@ impl<'a> EventFixture<'a> {
 
         client.set_key_price(&admin, &KEY_PRICE);
 
-        Self { client, creator }
+        Self {
+            env,
+            client,
+            creator,
+        }
     }
 
     fn register_creator(&self, env: &Env, handle: &str) {
@@ -56,6 +61,7 @@ impl<'a> EventFixture<'a> {
     }
 
     fn sell_key(&self, seller: &Address) {
+        self.env.ledger().with_mut(|l| l.sequence_number += 1);
         self.client.sell_key(&self.creator, seller, &None);
     }
 

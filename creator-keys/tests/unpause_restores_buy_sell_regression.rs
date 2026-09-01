@@ -10,7 +10,10 @@ use contract_test_env::{
     register_creator_keys, register_test_creator, set_pricing_and_fees, test_env_with_auths,
 };
 use creator_keys::ContractError;
-use soroban_sdk::{testutils::Address as _, Address};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address,
+};
 
 const KEY_PRICE: i128 = 1_000;
 const CREATOR_BPS: u32 = 9_000;
@@ -99,6 +102,7 @@ fn test_sell_reverts_while_paused() {
     client.pause(&admin);
     assert!(client.get_is_paused());
 
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &buyer, &None);
     assert_eq!(
         result,
@@ -124,6 +128,7 @@ fn test_sell_succeeds_immediately_after_unpause() {
 
     client.pause(&admin);
     // Sell must fail while paused
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let paused_result = client.try_sell_key(&creator, &buyer, &None);
     assert_eq!(paused_result, Err(Ok(ContractError::ProtocolPaused)));
 
@@ -131,6 +136,7 @@ fn test_sell_succeeds_immediately_after_unpause() {
     assert!(!client.get_is_paused());
 
     // Sell must succeed in the very next call after unpause
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let new_supply = client.sell_key(&creator, &buyer, &None);
     assert_eq!(
         new_supply, 1,
@@ -182,6 +188,7 @@ fn test_post_unpause_state_matches_baseline() {
     );
 
     // Post-unpause sell: supply retreats by 1
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &buyer, &None);
     assert_eq!(
         client.get_total_key_supply(&creator),

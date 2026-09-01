@@ -22,7 +22,10 @@ use contract_test_env::{
     set_key_price_for_tests, test_env_with_auths,
 };
 use creator_keys::{ContractError, CreatorKeysContractClient};
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env,
+};
 
 /// Base key price shared by both revert-path tests (flat bonding curve => price is
 /// constant across supply, so this is also the current price for every buy).
@@ -86,7 +89,9 @@ fn test_sell_reverts_on_oversell_without_state_change() {
 
     // Attempt to sell three keys. `sell_key` settles one key per call, so the first
     // two sells succeed and drain the holder's two keys...
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &holder, &None);
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &holder, &None);
     assert_eq!(client.get_key_balance(&creator, &holder), 0);
     assert_eq!(client.get_total_key_supply(&creator), 0);
@@ -96,6 +101,7 @@ fn test_sell_reverts_on_oversell_without_state_change() {
     // mutate nothing.
     let before_oversell = capture_snapshot(&client, &creator, &holder);
 
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &holder, &None);
 
     // Must revert with the insufficient-balance error code.

@@ -10,7 +10,10 @@ use contract_test_env::{
     register_creator_keys, register_test_creator, set_key_price_for_tests, test_env_with_auths,
 };
 use creator_keys::{ContractError, RegisterCreatorParams};
-use soroban_sdk::{testutils::Address as _, Address, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, String,
+};
 
 /// Register a protocol admin into contract storage and return the admin address.
 fn set_protocol_admin(
@@ -81,6 +84,7 @@ fn test_sell_key_reverts_for_blacklisted_seller() {
 
     client.blacklist_wallet(&admin, &seller);
 
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &seller, &None);
     assert_eq!(result, Err(Ok(ContractError::WalletBlacklisted)));
 }
@@ -98,6 +102,7 @@ fn test_sell_key_no_state_change_for_blacklisted_seller() {
     client.blacklist_wallet(&admin, &seller);
 
     let balance_before = client.get_key_balance(&creator, &seller);
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let _ = client.try_sell_key(&creator, &seller, &None);
     let balance_after = client.get_key_balance(&creator, &seller);
 
@@ -200,6 +205,7 @@ fn test_sell_key_succeeds_after_removal_from_blacklist() {
     client.blacklist_wallet(&admin, &seller);
     client.remove_from_blacklist(&admin, &seller);
 
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let supply = client.sell_key(&creator, &seller, &None);
     assert_eq!(supply, 0);
     assert_eq!(client.get_key_balance(&creator, &seller), 0);

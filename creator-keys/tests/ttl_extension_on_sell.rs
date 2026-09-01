@@ -88,6 +88,7 @@ fn sell_restores_creator_ttl_to_the_full_window() {
         "precondition: TTL should be drained below the extension threshold, got {ttl_before_sell}"
     );
 
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &holder, &None);
     assert_eq!(result, Ok(Ok(1)), "sell should succeed");
 
@@ -125,9 +126,15 @@ fn repeated_sells_reset_the_ttl_window_rather_than_accumulate() {
         CREATOR_TTL_LEDGERS,
     );
     let key_price_key = storage::KEY_PRICE;
+    let last_buy_ledger_key = storage::last_buy_ledger(&creator, &holder);
     env.as_contract(&contract_id, || {
         env.storage().persistent().extend_ttl(
             &key_price_key,
+            CREATOR_TTL_LEDGERS,
+            CREATOR_TTL_LEDGERS,
+        );
+        env.storage().persistent().extend_ttl(
+            &last_buy_ledger_key,
             CREATOR_TTL_LEDGERS,
             CREATOR_TTL_LEDGERS,
         );
@@ -142,6 +149,7 @@ fn repeated_sells_reset_the_ttl_window_rather_than_accumulate() {
         "precondition: advancing the ledger should have consumed TTL"
     );
 
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &holder, &None);
     let ttl_after_second = creator_ttl_remaining(&env, &contract_id, &creator);
 

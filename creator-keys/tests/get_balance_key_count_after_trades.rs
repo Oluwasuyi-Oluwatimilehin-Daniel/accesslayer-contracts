@@ -9,7 +9,10 @@ mod contract_test_env;
 use contract_test_env::{
     register_creator_keys, register_test_creator, set_key_price_for_tests, test_env_with_auths,
 };
-use soroban_sdk::{testutils::Address as _, Address};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address,
+};
 
 #[test]
 fn test_get_balance_after_buy_and_sell_sequence() {
@@ -42,6 +45,7 @@ fn test_get_balance_after_buy_and_sell_sequence() {
 
     // Sell 4 keys and assert get_key_balance returns 4
     for _ in 0..4 {
+        env.ledger().with_mut(|l| l.sequence_number += 1);
         client.sell_key(&creator, &buyer, &None);
     }
     assert_eq!(
@@ -52,6 +56,7 @@ fn test_get_balance_after_buy_and_sell_sequence() {
 
     // Sell the remaining 4 keys and assert get_key_balance returns 0
     for _ in 0..4 {
+        env.ledger().with_mut(|l| l.sequence_number += 1);
         client.sell_key(&creator, &buyer, &None);
     }
     assert_eq!(

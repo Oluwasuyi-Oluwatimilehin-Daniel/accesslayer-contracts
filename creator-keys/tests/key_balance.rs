@@ -1,7 +1,10 @@
 //! Tests for the `get_key_balance` read-only view method.
 
 use creator_keys::{CreatorKeysContract, CreatorKeysContractClient};
-use soroban_sdk::{testutils::Address as _, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Env, String,
+};
 
 #[test]
 fn test_key_balance_starts_at_zero() {
@@ -295,7 +298,9 @@ fn test_get_balance_wallet_bought_then_sold_all_keys_returns_zero_and_does_not_p
     assert_eq!(client.get_balance(&creator, &trader), 2);
 
     // Sell all 2 keys
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &trader, &None);
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &trader, &None);
 
     // Balance after selling all keys must return 0 without panicking

@@ -15,7 +15,10 @@ use contract_test_env::{
     register_creator_keys, register_test_creator, set_key_price_for_tests, test_env_with_auths,
 };
 use creator_keys::{ContractError, CreatorKeysContractClient};
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env,
+};
 
 fn setup(env: &Env) -> (CreatorKeysContractClient<'_>, Address) {
     let (client, _) = register_creator_keys(env);
@@ -43,6 +46,7 @@ fn test_sell_reverts_when_attempting_to_use_staked_keys() {
 
     // Sell 4 liquid keys successfully
     for _ in 0..4 {
+        env.ledger().with_mut(|l| l.sequence_number += 1);
         let result = client.try_sell_key(&creator, &holder, &None);
         assert!(
             result.is_ok(),
@@ -51,6 +55,7 @@ fn test_sell_reverts_when_attempting_to_use_staked_keys() {
     }
 
     // Attempt to sell 5th key - should fail because only 4 were liquid
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &holder, &None);
     assert_eq!(
         result,
@@ -76,6 +81,7 @@ fn test_sell_succeeds_within_liquid_balance_limit() {
     client.stake_keys(&creator, &holder, &6);
 
     for _ in 0..4 {
+        env.ledger().with_mut(|l| l.sequence_number += 1);
         client.sell_key(&creator, &holder, &None);
     }
 
@@ -97,6 +103,7 @@ fn test_staked_balance_unchanged_after_sell_attempts() {
 
     // Successfully sell 4 keys (one at a time)
     for _ in 0..4 {
+        env.ledger().with_mut(|l| l.sequence_number += 1);
         client.sell_key(&creator, &holder, &None);
     }
 
@@ -105,6 +112,7 @@ fn test_staked_balance_unchanged_after_sell_attempts() {
     assert_eq!(client.get_liquid_balance(&creator, &holder), 0);
 
     // Attempt to sell when no liquid balance remains (should fail)
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &holder, &None);
     assert_eq!(result, Err(Ok(ContractError::InsufficientBalance)));
 
@@ -172,6 +180,7 @@ fn invariant_total_equals_liquid_plus_staked() {
 
     client.stake_keys(&creator, &holder, &8);
     for _ in 0..5 {
+        env.ledger().with_mut(|l| l.sequence_number += 1);
         client.sell_key(&creator, &holder, &None);
     }
 
@@ -214,6 +223,7 @@ fn invariant_sell_only_reduces_liquid_not_staked() {
     let staked_before = client.get_staked_balance(&creator, &holder);
 
     for _ in 0..8 {
+        env.ledger().with_mut(|l| l.sequence_number += 1);
         client.sell_key(&creator, &holder, &None);
     }
 
@@ -293,12 +303,14 @@ fn test_stake_all_then_unstake_all() {
     client.stake_keys(&creator, &holder, &7);
     assert_eq!(client.get_liquid_balance(&creator, &holder), 0);
 
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &holder, &None);
     assert_eq!(result, Err(Ok(ContractError::InsufficientBalance)));
 
     client.unstake_keys(&creator, &holder, &7);
     assert_eq!(client.get_liquid_balance(&creator, &holder), 7);
 
+    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &holder, &None);
     assert_eq!(client.get_liquid_balance(&creator, &holder), 6);
 }
@@ -345,6 +357,7 @@ fn test_partial_unstake_then_sell() {
     assert_eq!(client.get_liquid_balance(&creator, &holder), 4);
 
     for _ in 0..3 {
+        env.ledger().with_mut(|l| l.sequence_number += 1);
         client.sell_key(&creator, &holder, &None);
     }
 
