@@ -14,7 +14,7 @@ use contract_test_env::{
 use creator_keys::events::{self, COOLDOWN_BLOCKED_EVENT_NAME};
 use creator_keys::{ContractError, CooldownError, MAX_BUY_COOLDOWN_LEDGERS};
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger},
+    testutils::{Address as _, Events},
     Address, Env, IntoVal, Symbol,
 };
 

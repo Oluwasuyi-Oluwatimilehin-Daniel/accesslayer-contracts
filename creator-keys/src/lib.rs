@@ -2953,6 +2953,8 @@ impl CreatorKeysContract {
 
         // Flash-loan guard (issue #781): record this buy's ledger so sell_key can
         // reject a same-ledger sell of the position just bought.
+        // Also used by the per-wallet cooldown guard to track the most recent
+        // successful buy ledger for each (creator, holder) pair.
         let last_buy_ledger_key = constants::storage::last_buy_ledger(&creator, &buyer);
         env.storage()
             .persistent()
@@ -2966,15 +2968,6 @@ impl CreatorKeysContract {
             .persistent()
             .set(&last_buy_key, &env.ledger().timestamp());
         extend_key_ttl_to_full_window(&env, &last_buy_key);
-
-        // Record the ledger sequence of this buy for the per-wallet cooldown guard.
-        // Written on every successful buy so the cooldown check always uses the
-        // most recent purchase ledger.
-        let last_buy_ledger_key = constants::storage::last_buy_ledger(&creator, &buyer);
-        env.storage()
-            .persistent()
-            .set(&last_buy_ledger_key, &env.ledger().sequence());
-        extend_key_ttl_to_full_window(&env, &last_buy_ledger_key);
 
         // Deduct the protocol trade fee before computing the creator payout so
         // the fee collector is paid ahead of every other participant. A share
