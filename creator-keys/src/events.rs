@@ -1437,3 +1437,34 @@ pub struct LaunchPenaltySetEvent {
 pub fn launch_penalty_set_topics(creator: &Address) -> (Symbol, Address) {
     (LAUNCH_PENALTY_SET_EVENT_NAME, creator.clone())
 }
+
+// ============================================================================
+// Per-wallet buy cooldown
+// ============================================================================
+
+/// Event name for a buy rejected by the per-wallet cooldown guard.
+pub const COOLDOWN_BLOCKED_EVENT_NAME: Symbol = symbol_short!("cd_blk");
+
+/// Stable cooldown-blocked event payload for downstream indexers.
+///
+/// Event shape:
+/// - topics: `(COOLDOWN_BLOCKED_EVENT_NAME, creator_id, wallet)`
+/// - data: `CooldownBlockedEvent`
+///
+/// Emitted inside [`CreatorKeysContract::buy_key`] when the per-wallet
+/// cooldown period has not elapsed since the buyer's last purchase.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct CooldownBlockedEvent {
+    /// Wallet whose buy was rejected.
+    pub wallet: Address,
+    /// Creator whose keys the buyer attempted to purchase.
+    pub creator_id: Address,
+    /// Number of ledgers remaining before the cooldown expires.
+    pub ledgers_remaining: u32,
+}
+
+/// Shared cooldown blocked event topics tuple.
+pub fn cooldown_blocked_topics(creator: &Address, wallet: &Address) -> (Symbol, Address, Address) {
+    (COOLDOWN_BLOCKED_EVENT_NAME, creator.clone(), wallet.clone())
+}
