@@ -9,8 +9,15 @@ use contract_test_env::{
     compute_expected_balance_after_trades, register_creator_keys, register_test_creator,
     set_key_price_for_tests, test_env_with_auths, TradeOperation,
 };
-use soroban_sdk::testutils::{Address as _, Ledger};
+use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::Address;
+
+/// Advance the ledger sequence by 1 to bypass the per-wallet flash-loan guard.
+fn next_ledger(env: &soroban_sdk::Env) {
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
+}
 
 #[test]
 fn test_balance_after_sequence_of_buys_and_sells() {
@@ -34,17 +41,15 @@ fn test_balance_after_sequence_of_buys_and_sells() {
     let expected = compute_expected_balance_after_trades(0, &trades);
     assert_eq!(expected, 0);
 
-    // Execute trades
     client.buy_key(&creator, &buyer, &100i128, &None);
     client.buy_key(&creator, &buyer, &100i128, &None);
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    next_ledger(&env); // advance past flash-loan guard before sell
     client.sell_key(&creator, &buyer, &None);
     client.buy_key(&creator, &buyer, &100i128, &None);
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    next_ledger(&env); // advance past flash-loan guard before sell
     client.sell_key(&creator, &buyer, &None);
     client.sell_key(&creator, &buyer, &None);
 
-    // Verify actual balance matches expected
     let actual = client.get_key_balance(&creator, &buyer);
     assert_eq!(actual, expected);
 }
@@ -74,7 +79,7 @@ fn test_balance_after_buys_then_sells() {
     for _ in 0..5 {
         client.buy_key(&creator, &buyer, &100i128, &None);
     }
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    next_ledger(&env); // advance past flash-loan guard before sells
     for _ in 0..2 {
         client.sell_key(&creator, &buyer, &None);
     }
@@ -110,7 +115,7 @@ fn test_balance_with_non_zero_initial() {
     assert_eq!(expected, 5);
 
     client.buy_key(&creator, &buyer, &100i128, &None);
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    next_ledger(&env); // advance past flash-loan guard before sell
     client.sell_key(&creator, &buyer, &None);
     client.sell_key(&creator, &buyer, &None);
     client.buy_key(&creator, &buyer, &100i128, &None);

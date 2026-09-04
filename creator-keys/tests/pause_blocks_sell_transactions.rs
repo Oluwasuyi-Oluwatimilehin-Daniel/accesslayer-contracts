@@ -16,10 +16,7 @@ use contract_test_env::{
     register_creator_keys, register_test_creator, set_pricing_and_fees, test_env_with_auths,
 };
 use creator_keys::ContractError;
-use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address,
-};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address};
 
 const KEY_PRICE: i128 = 1_000;
 const CREATOR_BPS: u32 = 9_000;
@@ -60,7 +57,6 @@ fn test_sell_panics_with_protocol_paused_when_contract_is_paused() {
     assert!(client.get_is_paused());
 
     // Attempt to sell — must revert with ProtocolPaused.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &seller, &None);
     assert_eq!(
         result,
@@ -90,7 +86,6 @@ fn test_sell_succeeds_after_resume() {
     // Pause the contract — sell must fail.
     client.pause(&admin);
     assert!(client.get_is_paused());
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let paused_result = client.try_sell_key(&creator, &seller, &None);
     assert_eq!(paused_result, Err(Ok(ContractError::ProtocolPaused)));
 
@@ -99,7 +94,9 @@ fn test_sell_succeeds_after_resume() {
     assert!(!client.get_is_paused());
 
     // Sell must succeed immediately after unpause.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     let new_supply = client.sell_key(&creator, &seller, &None);
     assert_eq!(
         new_supply, 1,
@@ -135,7 +132,6 @@ fn test_holder_count_unchanged_after_blocked_sell() {
     client.pause(&admin);
 
     // Attempted sell must fail.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &seller, &None);
     assert_eq!(result, Err(Ok(ContractError::ProtocolPaused)));
 
@@ -184,9 +180,7 @@ fn test_supply_unchanged_after_blocked_sell_with_multiple_holders() {
     client.pause(&admin);
 
     // Both holders attempt to sell — both must fail.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result_a = client.try_sell_key(&creator, &holder_a, &None);
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result_b = client.try_sell_key(&creator, &holder_b, &None);
     assert_eq!(result_a, Err(Ok(ContractError::ProtocolPaused)));
     assert_eq!(result_b, Err(Ok(ContractError::ProtocolPaused)));
@@ -242,7 +236,6 @@ fn test_full_pause_sell_lifecycle() {
     assert!(client.get_is_paused());
 
     // Sell must fail while paused.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let paused_result = client.try_sell_key(&creator, &seller, &None);
     assert_eq!(paused_result, Err(Ok(ContractError::ProtocolPaused)));
 
@@ -262,7 +255,9 @@ fn test_full_pause_sell_lifecycle() {
     assert!(!client.get_is_paused());
 
     // Sell must succeed immediately after unpause.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     let supply_after_sell = client.sell_key(&creator, &seller, &None);
     assert_eq!(
         supply_after_sell,

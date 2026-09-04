@@ -35,7 +35,8 @@ use contract_test_env::{
 };
 use creator_keys::events;
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger},
+    testutils::Ledger as _,
+    testutils::{Address as _, Events},
     Address, IntoVal, Symbol,
 };
 
@@ -65,7 +66,9 @@ fn sell_n_keys(
     count: u32,
 ) {
     for _ in 0..count {
-        env.ledger().with_mut(|l| l.sequence_number += 1);
+        let mut l = env.ledger().get();
+        l.sequence_number += 1;
+        env.ledger().set(l);
         client.sell_key(creator, seller, &None);
     }
 }
@@ -127,7 +130,9 @@ fn test_supply_transitions_correctly_through_buy_and_sell() {
 
     // Track supply after each sell (same ledger — no sequence bump)
     for expected in (0u32..5).rev() {
-        env.ledger().with_mut(|l| l.sequence_number += 1);
+        let mut l = env.ledger().get();
+        l.sequence_number += 1;
+        env.ledger().set(l);
         let new_supply = client.sell_key(&creator, &trader, &None);
         assert_eq!(
             new_supply, expected,
@@ -342,7 +347,9 @@ fn test_buy_and_sell_return_values_form_consistent_supply_sequence() {
     // Sell 5 keys; collect each return value
     let mut sell_returns = Vec::new();
     for _ in 0..5 {
-        env.ledger().with_mut(|l| l.sequence_number += 1);
+        let mut l = env.ledger().get();
+        l.sequence_number += 1;
+        env.ledger().set(l);
         let new_supply = client.sell_key(&creator, &trader, &None);
         sell_returns.push(new_supply);
     }
@@ -416,7 +423,9 @@ fn test_buy_and_sell_events_both_emitted_and_correctly_tagged() {
     // Count sell events — one per invocation
     let mut sell_count = 0usize;
     for _ in 0..5 {
-        env.ledger().with_mut(|l| l.sequence_number += 1);
+        let mut l = env.ledger().get();
+        l.sequence_number += 1;
+        env.ledger().set(l);
         client.sell_key(&creator, &trader, &None);
         let event_log = env.events().all();
         sell_count += event_log
@@ -498,7 +507,9 @@ fn test_sell_events_carry_correct_addresses() {
     buy_n_keys(&client, &creator, &trader, 5);
 
     for _ in 0..5 {
-        env.ledger().with_mut(|l| l.sequence_number += 1);
+        let mut l = env.ledger().get();
+        l.sequence_number += 1;
+        env.ledger().set(l);
         client.sell_key(&creator, &trader, &None);
 
         // Read immediately — harness exposes the most-recent invocation's events.

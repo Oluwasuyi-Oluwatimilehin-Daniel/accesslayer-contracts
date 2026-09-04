@@ -11,10 +11,7 @@ use contract_test_env::{
     register_creator_keys, register_test_creator, set_pricing_and_fees, test_env_with_auths,
 };
 use creator_keys::CreatorKeysContractClient;
-use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env,
-};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env};
 
 /// Cost implied by the same fee math used when the contract executes the trade path.
 fn actual_buyback_cost(client: &CreatorKeysContractClient<'_>, price: i128) -> i128 {
@@ -54,7 +51,9 @@ fn assert_buyback_quote_matches_execution(
         "quoted buyback cost must match execution-path cost before trade"
     );
 
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     let supply_after_trade = client.sell_key(creator, holder, &None);
     assert_eq!(
         supply_after_trade,

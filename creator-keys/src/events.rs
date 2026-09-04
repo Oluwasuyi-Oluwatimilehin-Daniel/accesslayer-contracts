@@ -1496,11 +1496,10 @@ pub fn launch_penalty_set_topics(creator: &Address) -> (Symbol, Address) {
     (LAUNCH_PENALTY_SET_EVENT_NAME, creator.clone())
 }
 
+/// Event name for a pre-launch auction being configured.
 pub const AUCTION_CONFIGURED_EVENT_NAME: Symbol = symbol_short!("auc_cfg");
-pub const AUCTION_CANCELLED_EVENT_NAME: Symbol = symbol_short!("auc_canc");
-pub const AUCTION_PURCHASE_EVENT_NAME: Symbol = symbol_short!("auc_buy");
-pub const CO_CREATOR_REMOVED_EVENT_NAME: Symbol = symbol_short!("co_rem");
 
+/// Payload emitted when a creator configures a pre-launch auction (issue #787).
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct AuctionConfiguredEvent {
@@ -1509,10 +1508,30 @@ pub struct AuctionConfiguredEvent {
     pub auction_supply: u32,
 }
 
+/// Shared auction-configured event topics tuple.
 pub fn auction_configured_topics(creator: &Address) -> (Symbol, Address) {
     (AUCTION_CONFIGURED_EVENT_NAME, creator.clone())
 }
 
+/// Event name for a pre-launch auction being cancelled.
+pub const AUCTION_CANCELLED_EVENT_NAME: Symbol = symbol_short!("auc_cnl");
+
+/// Payload emitted when a creator cancels a pre-launch auction (issue #790).
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct AuctionCancelledEvent {
+    pub creator_id: Address,
+}
+
+/// Shared auction-cancelled event topics tuple.
+pub fn auction_cancelled_topics(creator: &Address) -> (Symbol, Address) {
+    (AUCTION_CANCELLED_EVENT_NAME, creator.clone())
+}
+
+/// Event name for an auction-phase key purchase.
+pub const AUCTION_PURCHASE_EVENT_NAME: Symbol = symbol_short!("auc_buy");
+
+/// Stable auction purchase event payload for downstream indexers.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct AuctionPurchaseEvent {
@@ -1525,32 +1544,32 @@ pub struct AuctionPurchaseEvent {
     pub ledger: u32,
 }
 
+/// Shared auction purchase event topics tuple.
 pub fn auction_purchase_topics(creator: &Address, buyer: &Address) -> (Symbol, Address, Address) {
     (AUCTION_PURCHASE_EVENT_NAME, creator.clone(), buyer.clone())
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[contracttype]
-pub struct AuctionCancelledEvent {
-    pub creator_id: Address,
-    pub auction_price: i128,
-    pub auction_supply: u32,
-}
+/// Event name for a co-creator removal.
+pub const CO_CREATOR_REMOVED_EVENT_NAME: Symbol = symbol_short!("co_rm");
 
-pub fn auction_cancelled_topics(creator: &Address) -> (Symbol, Address) {
-    (AUCTION_CANCELLED_EVENT_NAME, creator.clone())
-}
-
+/// Payload emitted when a creator removes their co-creator split (issue #791).
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub struct CoCreatorRemovedEvent {
     pub creator_id: Address,
     pub co_creator: Address,
-    pub ledger: u32,
 }
 
-pub fn co_creator_removed_topics(creator: &Address) -> (Symbol, Address) {
-    (CO_CREATOR_REMOVED_EVENT_NAME, creator.clone())
+/// Shared co-creator removal event topics tuple.
+pub fn co_creator_removed_topics(
+    creator: &Address,
+    co_creator: &Address,
+) -> (Symbol, Address, Address) {
+    (
+        CO_CREATOR_REMOVED_EVENT_NAME,
+        creator.clone(),
+        co_creator.clone(),
+    )
 }
 
 /// Event name for dividend reinvestment.

@@ -13,10 +13,7 @@
 mod contract_test_env;
 
 use contract_test_env::{register_creator_keys, register_test_creator, set_key_price_for_tests};
-use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env,
-};
+use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env};
 
 const KEY_PRICE: i128 = 100;
 
@@ -120,7 +117,9 @@ fn holder_count_tracks_two_wallets_through_buys_and_full_exits() {
     );
 
     // Wallet A sells its only key: a full exit, so the count drops to 1.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &wallet_a, &None);
     assert_state(
         &client,
@@ -132,7 +131,9 @@ fn holder_count_tracks_two_wallets_through_buys_and_full_exits() {
     );
 
     // Wallet B follows: no holders left.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &wallet_b, &None);
     assert_state(
         &client,
@@ -171,7 +172,9 @@ fn partial_sells_do_not_decrement_the_holder_count() {
     // Selling down wallet A one key at a time leaves the count at 2 until the
     // last key goes. If the count tracked keys instead of wallets, the first of
     // these assertions would fail.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &wallet_a, &None);
     assert_state(
         &client,
@@ -182,7 +185,9 @@ fn partial_sells_do_not_decrement_the_holder_count() {
         "wallet A partial sell (2 keys left)",
     );
 
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &wallet_a, &None);
     assert_state(
         &client,
@@ -193,7 +198,9 @@ fn partial_sells_do_not_decrement_the_holder_count() {
         "wallet A partial sell (1 key left)",
     );
 
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &wallet_a, &None);
     assert_state(
         &client,
@@ -205,7 +212,9 @@ fn partial_sells_do_not_decrement_the_holder_count() {
     );
 
     // Wallet B exits the same way.
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &wallet_b, &None);
     assert_state(
         &client,
@@ -216,7 +225,9 @@ fn partial_sells_do_not_decrement_the_holder_count() {
         "wallet B partial sell",
     );
 
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &wallet_b, &None);
     assert_state(
         &client,
@@ -247,9 +258,10 @@ fn repeat_buys_and_re_entry_are_counted_once_per_wallet() {
         "a second buy by the same wallet is not a second holder",
     );
 
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &wallet_a, &None);
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     client.sell_key(&creator, &wallet_a, &None);
     assert_state(
         &client,

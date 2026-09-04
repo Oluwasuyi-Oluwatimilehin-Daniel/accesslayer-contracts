@@ -2,14 +2,13 @@
 
 use creator_keys::{events, CreatorKeysContract, CreatorKeysContractClient};
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger},
+    testutils::{Address as _, Events, Ledger as _},
     Address, Env, IntoVal, String, Symbol, Val, Vec,
 };
 
 const KEY_PRICE: i128 = 100;
 
 struct EventFixture<'a> {
-    env: &'a Env,
     client: CreatorKeysContractClient<'a>,
     creator: Address,
 }
@@ -34,11 +33,7 @@ impl<'a> EventFixture<'a> {
 
         client.set_key_price(&admin, &KEY_PRICE);
 
-        Self {
-            env,
-            client,
-            creator,
-        }
+        Self { client, creator }
     }
 
     fn register_creator(&self, env: &Env, handle: &str) {
@@ -60,8 +55,10 @@ impl<'a> EventFixture<'a> {
         self.client.buy_key(&self.creator, buyer, &payment, &None);
     }
 
-    fn sell_key(&self, seller: &Address) {
-        self.env.ledger().with_mut(|l| l.sequence_number += 1);
+    fn sell_key(&self, env: &Env, seller: &Address) {
+        let mut l = env.ledger().get();
+        l.sequence_number += 1;
+        env.ledger().set(l);
         self.client.sell_key(&self.creator, seller, &None);
     }
 
@@ -443,7 +440,7 @@ fn test_sell_key_event_payload_fields_are_validated_from_fixture() {
     fixture.register_creator(&env, "alice");
     fixture.buy_key(&seller, KEY_PRICE);
     fixture.buy_key(&seller, KEY_PRICE);
-    fixture.sell_key(&seller);
+    fixture.sell_key(&env, &seller);
 
     let topics = fixture.last_trade_topics(&env);
     let payload = fixture.last_sell_payload(&env);
@@ -464,7 +461,7 @@ fn test_sell_key_event_payload_tracks_zero_supply_after_last_sale() {
 
     fixture.register_creator(&env, "alice");
     fixture.buy_key(&seller, KEY_PRICE);
-    fixture.sell_key(&seller);
+    fixture.sell_key(&env, &seller);
 
     let topics = fixture.last_trade_topics(&env);
     let payload = fixture.last_sell_payload(&env);

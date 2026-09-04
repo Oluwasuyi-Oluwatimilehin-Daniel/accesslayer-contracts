@@ -169,7 +169,9 @@ fn test_sell_event_new_supply_matches_post_transaction_state() {
     assert_eq!(client.get_total_key_supply(&creator), 2);
 
     // --- First sell: 2 -> 1 ---
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     let supply_after_first = client.sell_key(&creator, &holder, &None);
     assert_eq!(supply_after_first, 1, "return value must be new supply (1)");
     assert_eq!(
@@ -184,7 +186,9 @@ fn test_sell_event_new_supply_matches_post_transaction_state() {
     );
 
     // --- Second sell: 1 -> 0 ---
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     let supply_after_second = client.sell_key(&creator, &holder, &None);
     assert_eq!(
         supply_after_second, 0,
@@ -237,7 +241,6 @@ fn test_no_sell_event_emitted_on_failed_sell() {
     // Clear event log
     env.events().all();
 
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &wallet_b, &None);
     assert_eq!(
         result,
@@ -307,7 +310,9 @@ fn test_sell_event_proceeds_matches_sell_quote() {
     env.events().all();
 
     // Sell and extract the event
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &holder, &None);
 
     let event_log = env.events().all();

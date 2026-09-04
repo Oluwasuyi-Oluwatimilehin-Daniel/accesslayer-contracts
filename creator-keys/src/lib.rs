@@ -80,15 +80,14 @@ pub enum ContractError {
     LockupPeriodActive = 52,
     InvalidHolderCap = 53,
     GlobalTradingHalted = 54,
-    FrozenBalanceExceeded = 55,
+    FlashLoanDetected = 55,
     FreezeQuantityExceedsBalance = 56,
-    SplitTooHigh = 57,
+    SnapshotHolderLimitExceeded = 57,
     SnapshotAlreadyExists = 58,
-    SnapshotHolderLimitExceeded = 59,
-    KeyAlreadyInitialised = 60,
-    NameTooLong = 61,
-    BioTooLong = 62,
-    FlashLoanDetected = 63,
+    SplitTooHigh = 59,
+    NameTooLong = 60,
+    BioTooLong = 61,
+    KeyAlreadyInitialised = 62,
 }
 
 /// Errors raised by the staking lifecycle entrypoints
@@ -122,28 +121,28 @@ pub enum StakingError {
     FreezeQuantityExceedsBalance = 53,
 }
 
+/// Errors raised by co-creator and auction lifecycle entrypoints.
+///
+/// Kept separate from [`ContractError`] because that enum is already at the
+/// Soroban 50-variant cap.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
-/// Error variants for the co-creator removal, pre-launch auction, and
-/// staking reward claim entrypoints.
-///
-/// These live in a separate error type from [`ContractError`] rather than as
-/// additional variants there: the Soroban contract spec format caps a single
-/// `#[contracterror]` enum at 50 cases (`SCSpecUDTErrorEnumV0.cases<50>`),
-/// and `ContractError` is already at that limit.
 pub enum FeatureError {
+    /// The `caller` is not the `creator` owning the key.
     Unauthorized = 1,
-    NotRegistered = 2,
-    Overflow = 3,
-    ProtocolPaused = 4,
+    /// `remove_co_creator` was called but no co-creator is configured.
+    NoCoCreatorSet = 2,
+    /// The creator is not registered.
+    NotRegistered = 3,
+    /// An auction is already in progress (supply > 0) and cannot be configured or cancelled.
+    AuctionAlreadyStarted = 4,
+    /// A price or quantity was zero when a positive value was required.
     NotPositiveAmount = 5,
-    NoCoCreatorSet = 6,
-    AuctionAlreadyStarted = 7,
-    NoAuctionConfigured = 8,
-    InvalidAuctionConfig = 9,
-    StakeLockActive = 10,
-    NoStakeFound = 11,
+    /// The auction supply was outside the valid range (1..=10_000).
+    InvalidAuctionConfig = 6,
+    /// `cancel_auction` or `buy_key` (auction path) but no auction is configured.
+    NoAuctionConfigured = 7,
 }
 
 pub mod fee {
@@ -512,10 +511,6 @@ pub mod constants {
             DataKey::ReferralFeeBps
         }
 
-        pub fn holder_cap_bps(creator: &Address) -> DataKey {
-            DataKey::HolderCapBps(creator.clone())
-        }
-
         pub fn royalty_config(creator: &Address) -> DataKey {
             DataKey::RoyaltyConfig(creator.clone())
         }
@@ -564,6 +559,9 @@ pub mod constants {
             DataKey::VestingClaimed(creator.clone(), beneficiary.clone())
         }
 
+        pub fn holder_cap_bps(creator: &Address) -> DataKey {
+            DataKey::HolderCapBps(creator.clone())
+        }
         pub fn quorum_bps(creator: &Address) -> DataKey {
             DataKey::QuorumBps(creator.clone())
         }
@@ -954,68 +952,33 @@ pub enum DataKey {
     /// (creator, holder) -> timestamp of the holder's most recent buy, used by
     /// the anti-flash-trade sell lockup window (#784).
     LastBuyTimestamp(Address, Address),
-    ProtocolFeeBps,
-    HolderCapBps(Address),
-    LockupDurationSecs,
-    QuorumBps(Address),
     GlobalTradingPaused,
     GlobalPauseAdmins,
     GlobalPauseVote(Address),
     GlobalResumeVote(Address),
     SelfFrozenBalance(Address, Address),
+    /// Protocol-wide trade fee in basis points (#774).
+    ProtocolFeeBps,
+    /// Anti-flash-trade sell lockup duration in seconds (#774).
+    LockupDurationSecs,
+    /// Per-creator percentage holding cap in basis points (#774).
+    HolderCapBps(Address),
+    /// Per-creator staking position. Keyed `(creator, holder, stake_id)`.
     StakePosition(Address, Address, u32),
+    /// Per-creator staking rewards pool and cross-holder staked-key total.
     StakingRewardsPool(Address),
+    /// Ledger sequence when the first key was bought for a creator.
     CreatedAtLedger(Address),
+    /// Custom launch penalty basis points for a creator (0 = use default).
     LaunchPenaltyBps(Address),
+    /// Per-creator governance quorum threshold in basis points.
+    QuorumBps(Address),
+    /// Pre-launch auction configuration for a creator.
     AuctionConfig(Address),
+    /// Per-(creator, holder) stake unlock ledger sequence.
     StakeUnlockLedger(Address, Address),
+    /// Total keys currently staked for a creator across all holders.
     TotalStaked(Address),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[contracttype]
-pub enum StakingKey {
-    NextStakeId(Address, Address),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[contracttype]
-pub struct StakePosition {
-    pub stake_id: u32,
-    pub amount: u32,
-    pub unlock_ledger: u32,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[contracttype]
-pub struct StakingRewardsState {
-    pub pool: i128,
-    pub total_staked: u32,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[contracttype]
-pub struct StakeExit {
-    pub stake_id: u32,
-    pub amount: u32,
-    pub forgone_reward: i128,
-    pub penalty: i128,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[contracttype]
-pub struct StakeRewardClaim {
-    pub stake_id: u32,
-    pub amount: u32,
-    pub reward: i128,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[contracttype]
-pub struct AuctionConfig {
-    pub auction_price: i128,
-    pub auction_supply: u32,
-    pub auction_sold: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1035,6 +998,73 @@ pub struct LockedAllocation {
     pub amount: u32,
     pub unlock_ledger: u32,
     pub claimed: bool,
+}
+
+/// Internal staking account keys that are not part of the public data-key ABI.
+///
+/// Used to keep [`DataKey`] within the `#[contracttype]` export limit.
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub enum StakingKey {
+    /// Next sequential stake id for a `(creator, holder)` pair -> `u32`.
+    NextStakeId(Address, Address),
+}
+
+/// A single locked staking position held by a holder.
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct StakePosition {
+    /// Sequential id scoped to the `(creator, holder)` pair.
+    pub stake_id: u32,
+    /// Number of keys locked in this position.
+    pub amount: u32,
+    /// Ledger sequence at which the position matures and can be claimed.
+    pub unlock_ledger: u32,
+}
+
+/// Per-creator staking rewards accounting.
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct StakingRewardsState {
+    /// Accumulated reward pool, funded from a share of protocol trade fees.
+    pub pool: i128,
+    /// Total keys currently staked for the creator across all holders.
+    pub total_staked: u32,
+}
+
+/// Result of [`CreatorKeysContract::early_unstake`].
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct StakeExit {
+    /// Id of the closed position.
+    pub stake_id: u32,
+    /// Keys released back to the holder's liquid balance.
+    pub amount: u32,
+    /// Pro-rata reward entitlement removed from the pool.
+    pub forgone_reward: i128,
+    /// Penalty retained in the pool (added back after the forgone reward is removed).
+    pub penalty: i128,
+}
+
+/// Result of [`CreatorKeysContract::claim_stake_reward`].
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct StakeRewardClaim {
+    /// Id of the closed position.
+    pub stake_id: u32,
+    /// Keys released back to the holder's liquid balance.
+    pub amount: u32,
+    /// Reward paid out to the staker from the pool.
+    pub reward: i128,
+}
+
+/// Pre-launch fixed-price auction configuration for a creator key.
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct AuctionConfig {
+    pub auction_price: i128,
+    pub auction_supply: u32,
+    pub auction_sold: u32,
 }
 
 /// Optional immutable collaborator split configured at creator registration.
@@ -1913,7 +1943,8 @@ fn read_lockup_duration_secs(env: &Env) -> Option<u64> {
         .get(&constants::storage::LOCKUP_DURATION_SECS)
 }
 
-fn read_total_staked(env: &Env, creator: &Address) -> u32 {
+/// Reads the total keys currently staked across all holders for a creator.
+pub fn read_total_staked(env: &Env, creator: &Address) -> u32 {
     env.storage()
         .persistent()
         .get(&constants::storage::total_staked(creator))
@@ -3109,6 +3140,7 @@ impl CreatorKeysContract {
         // configurable penalty from the proceeds and credit it to the
         // staking rewards pool.
         let proceeds = compute_sell_proceeds(&env, price).unwrap_or(0);
+        let mut final_proceeds = proceeds;
 
         if let Some(created_at) = env
             .storage()
@@ -3129,6 +3161,9 @@ impl CreatorKeysContract {
                     let penalty_amount =
                         crate::fee::apply_percentage_fee(proceeds, capped_bps).unwrap_or(0);
                     if penalty_amount > 0 {
+                        final_proceeds = final_proceeds
+                            .checked_sub(penalty_amount)
+                            .ok_or(ContractError::Overflow)?;
                         credit_staking_rewards_pool(&env, &creator, penalty_amount)?;
                         env.events().publish(
                             events::launch_penalty_applied_topics(&creator, &seller),
@@ -3149,7 +3184,7 @@ impl CreatorKeysContract {
             seller: seller.clone(),
             creator_id: creator.clone(),
             quantity: 1,
-            proceeds,
+            proceeds: final_proceeds,
             new_supply: profile.supply,
             ledger: env.ledger().sequence(),
         };
@@ -3987,6 +4022,134 @@ impl CreatorKeysContract {
         );
 
         Ok(())
+    }
+
+    /// Removes the co-creator split for a registered creator (issue #791).
+    ///
+    /// After removal the full creator fee goes to `creator` on future trades.
+    /// The co-creator's existing fee balance is preserved (they can still
+    /// withdraw it).
+    ///
+    /// # Errors
+    /// - [`FeatureError::Unauthorized`] if `caller` is not `creator`.
+    /// - [`FeatureError::NoCoCreatorSet`] if no co-creator is configured.
+    pub fn remove_co_creator(
+        env: Env,
+        creator: Address,
+        caller: Address,
+    ) -> Result<(), FeatureError> {
+        caller.require_auth();
+        if caller != creator {
+            return Err(FeatureError::Unauthorized);
+        }
+        let key = constants::storage::co_creator(&creator);
+        let config: Option<CoCreatorConfig> = env.storage().persistent().get(&key);
+        let Some(config) = config else {
+            return Err(FeatureError::NoCoCreatorSet);
+        };
+        let removed_address = config.address.clone();
+        env.storage().persistent().remove(&key);
+        env.events().publish(
+            events::co_creator_removed_topics(&creator, &removed_address),
+            events::CoCreatorRemovedEvent {
+                creator_id: creator,
+                co_creator: removed_address,
+            },
+        );
+        Ok(())
+    }
+
+    /// Configures a pre-launch fixed-price auction for a creator's key (issue #787).
+    ///
+    /// Must be called before any key has been sold (supply == 0).
+    /// During the auction phase `buy_key` will settle at `auction_price` instead of
+    /// the bonding-curve price until `auction_supply` keys have been sold.
+    ///
+    /// # Errors
+    /// - [`FeatureError::Unauthorized`] if `caller != creator`.
+    /// - [`FeatureError::NotRegistered`] if the creator has no profile.
+    /// - [`FeatureError::AuctionAlreadyStarted`] if supply > 0.
+    /// - [`FeatureError::NotPositiveAmount`] if `auction_price <= 0`.
+    /// - [`FeatureError::InvalidAuctionConfig`] if `auction_supply` is 0 or > 10 000.
+    pub fn configure_auction(
+        env: Env,
+        creator: Address,
+        caller: Address,
+        auction_price: i128,
+        auction_supply: u32,
+    ) -> Result<(), FeatureError> {
+        caller.require_auth();
+        if caller != creator {
+            return Err(FeatureError::Unauthorized);
+        }
+        let profile: CreatorProfile = env
+            .storage()
+            .persistent()
+            .get(&constants::storage::creator(&creator))
+            .ok_or(FeatureError::NotRegistered)?;
+        if profile.supply > 0 {
+            return Err(FeatureError::AuctionAlreadyStarted);
+        }
+        if auction_price <= 0 {
+            return Err(FeatureError::NotPositiveAmount);
+        }
+        if auction_supply == 0 || auction_supply > 10_000 {
+            return Err(FeatureError::InvalidAuctionConfig);
+        }
+        let config = AuctionConfig {
+            auction_price,
+            auction_supply,
+            auction_sold: 0,
+        };
+        let key = constants::storage::auction_config(&creator);
+        env.storage().persistent().set(&key, &config);
+        extend_key_ttl_to_full_window(&env, &key);
+        env.events().publish(
+            events::auction_configured_topics(&creator),
+            events::AuctionConfiguredEvent {
+                creator_id: creator,
+                auction_price,
+                auction_supply,
+            },
+        );
+        Ok(())
+    }
+
+    /// Cancels a pre-launch auction before any key has been purchased (issue #790).
+    ///
+    /// # Errors
+    /// - [`FeatureError::Unauthorized`] if `caller != creator`.
+    /// - [`FeatureError::NoAuctionConfigured`] if no auction exists.
+    /// - [`FeatureError::AuctionAlreadyStarted`] if at least one key has been sold.
+    pub fn cancel_auction(env: Env, creator: Address, caller: Address) -> Result<(), FeatureError> {
+        caller.require_auth();
+        if caller != creator {
+            return Err(FeatureError::Unauthorized);
+        }
+        let key = constants::storage::auction_config(&creator);
+        let config: AuctionConfig = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(FeatureError::NoAuctionConfigured)?;
+        if config.auction_sold > 0 {
+            return Err(FeatureError::AuctionAlreadyStarted);
+        }
+        env.storage().persistent().remove(&key);
+        env.events().publish(
+            events::auction_cancelled_topics(&creator),
+            events::AuctionCancelledEvent {
+                creator_id: creator,
+            },
+        );
+        Ok(())
+    }
+
+    /// Read-only view: returns the current auction configuration for a creator, if any.
+    pub fn get_auction_config(env: Env, creator: Address) -> Option<AuctionConfig> {
+        env.storage()
+            .persistent()
+            .get(&constants::storage::auction_config(&creator))
     }
 
     /// Stores on-chain identity metadata (name, bio, avatar URI) for a
@@ -7013,119 +7176,6 @@ impl CreatorKeysContract {
     /// Read-only view: returns the curve exponent for a creator, if set.
     pub fn get_curve_exponent(env: Env, creator: Address) -> Option<u32> {
         read_curve_exponent(&env, &creator)
-    }
-
-    pub fn remove_co_creator(
-        env: Env,
-        creator: Address,
-        caller: Address,
-    ) -> Result<(), FeatureError> {
-        caller.require_auth();
-        if caller != creator {
-            return Err(FeatureError::Unauthorized);
-        }
-
-        let key = constants::storage::co_creator(&creator);
-        let config: CoCreatorConfig = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .ok_or(FeatureError::NoCoCreatorSet)?;
-
-        env.storage().persistent().remove(&key);
-
-        env.events().publish(
-            events::co_creator_removed_topics(&creator),
-            events::CoCreatorRemovedEvent {
-                creator_id: creator,
-                co_creator: config.address,
-                ledger: env.ledger().sequence(),
-            },
-        );
-
-        Ok(())
-    }
-
-    pub fn configure_auction(
-        env: Env,
-        creator: Address,
-        caller: Address,
-        auction_price: i128,
-        auction_supply: u32,
-    ) -> Result<(), FeatureError> {
-        caller.require_auth();
-        if caller != creator {
-            return Err(FeatureError::Unauthorized);
-        }
-
-        let profile = read_registered_creator_profile(&env, &creator)
-            .map_err(|_| FeatureError::NotRegistered)?;
-        if profile.supply > 0 {
-            return Err(FeatureError::AuctionAlreadyStarted);
-        }
-        if auction_price <= 0 {
-            return Err(FeatureError::NotPositiveAmount);
-        }
-        if auction_supply == 0 || auction_supply > MAX_AUCTION_SUPPLY {
-            return Err(FeatureError::InvalidAuctionConfig);
-        }
-
-        let config = AuctionConfig {
-            auction_price,
-            auction_supply,
-            auction_sold: 0,
-        };
-        let key = constants::storage::auction_config(&creator);
-        env.storage().persistent().set(&key, &config);
-        extend_key_ttl_to_full_window(&env, &key);
-
-        env.events().publish(
-            events::auction_configured_topics(&creator),
-            events::AuctionConfiguredEvent {
-                creator_id: creator,
-                auction_price,
-                auction_supply,
-            },
-        );
-
-        Ok(())
-    }
-
-    pub fn cancel_auction(env: Env, creator: Address, caller: Address) -> Result<(), FeatureError> {
-        caller.require_auth();
-        if caller != creator {
-            return Err(FeatureError::Unauthorized);
-        }
-
-        let key = constants::storage::auction_config(&creator);
-        let config: AuctionConfig = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .ok_or(FeatureError::NoAuctionConfigured)?;
-
-        if config.auction_sold > 0 {
-            return Err(FeatureError::AuctionAlreadyStarted);
-        }
-
-        env.storage().persistent().remove(&key);
-
-        env.events().publish(
-            events::auction_cancelled_topics(&creator),
-            events::AuctionCancelledEvent {
-                creator_id: creator,
-                auction_price: config.auction_price,
-                auction_supply: config.auction_supply,
-            },
-        );
-
-        Ok(())
-    }
-
-    pub fn get_auction_config(env: Env, creator: Address) -> Option<AuctionConfig> {
-        env.storage()
-            .persistent()
-            .get(&constants::storage::auction_config(&creator))
     }
 
     pub fn get_stake_unlock_ledger(env: Env, creator: Address, holder: Address) -> Option<u32> {

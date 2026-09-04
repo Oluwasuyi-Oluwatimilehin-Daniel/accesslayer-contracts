@@ -17,7 +17,7 @@ use contract_test_env::{
 };
 use creator_keys::{events, ContractError};
 use soroban_sdk::{
-    testutils::{Address as _, Events, Ledger},
+    testutils::{Address as _, Events, Ledger as _},
     Address, IntoVal, Symbol,
 };
 
@@ -32,7 +32,9 @@ fn test_sell_zero_keys_panics_on_direct_call() {
     let zero_seller = Address::generate(&env);
 
     // Direct invocation panics because seller has zero keys
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &zero_seller, &None);
 }
 
@@ -55,7 +57,6 @@ fn test_sell_zero_keys_leaves_supply_and_balance_unchanged() {
     assert_eq!(before.key_balance, 0, "seller balance should be 0");
 
     // Attempt to sell with 0 keys
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &zero_seller, &None);
     assert_eq!(
         result,
@@ -81,7 +82,6 @@ fn test_sell_zero_keys_emits_no_key_sold_event() {
     // Clear event log before the sell attempt
     env.events().all();
 
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &zero_seller, &None);
     assert_eq!(result, Err(Ok(ContractError::InsufficientBalance)));
 
@@ -119,7 +119,9 @@ fn test_sell_zero_keys_after_full_exit_reverts_and_emits_no_event() {
     assert_eq!(client.get_key_balance(&creator, &trader), 1);
     assert_eq!(client.get_total_key_supply(&creator), 1);
 
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     client.sell_key(&creator, &trader, &None);
     assert_eq!(client.get_key_balance(&creator, &trader), 0);
     assert_eq!(client.get_total_key_supply(&creator), 0);
@@ -130,7 +132,6 @@ fn test_sell_zero_keys_after_full_exit_reverts_and_emits_no_event() {
     env.events().all();
 
     // Trader attempts to sell another key while holding 0 keys
-    env.ledger().with_mut(|l| l.sequence_number += 1);
     let result = client.try_sell_key(&creator, &trader, &None);
     assert_eq!(
         result,
@@ -188,7 +189,9 @@ fn test_sell_zero_liquid_keys_when_all_staked_reverts_and_emits_no_event() {
     env.events().all();
 
     // Holder attempts to sell when liquid balance is 0
-    env.ledger().with_mut(|l| l.sequence_number += 1);
+    let mut l = env.ledger().get();
+    l.sequence_number += 1;
+    env.ledger().set(l);
     let result = client.try_sell_key(&creator, &holder, &None);
     assert_eq!(
         result,
