@@ -160,7 +160,7 @@ fn test_non_creator_cannot_set_cooldown() {
 
     let (client, _) = register_creator_keys(&env);
     set_key_price_for_tests(&env, &client, KEY_PRICE);
-    let creator = register_test_creator(&env, &client, "carol");
+    let _creator = register_test_creator(&env, &client, "carol");
     let impostor = Address::generate(&env);
 
     // Attempt by impostor is rejected at the host auth level.
