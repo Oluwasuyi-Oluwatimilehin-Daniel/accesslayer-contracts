@@ -1526,3 +1526,118 @@ pub struct CooldownBlockedEvent {
 pub fn cooldown_blocked_topics(creator: &Address, wallet: &Address) -> (Symbol, Address, Address) {
     (COOLDOWN_BLOCKED_EVENT_NAME, creator.clone(), wallet.clone())
 }
+
+// ============================================================================
+// Pre-launch auction (#FeatureError)
+// ============================================================================
+
+/// Event name for a key purchased during a pre-launch auction.
+pub const AUCTION_PURCHASE_EVENT_NAME: Symbol = symbol_short!("auc_buy");
+
+/// Stable auction purchase event payload for downstream indexers.
+///
+/// Emitted inside `buy_key` when the purchase is fulfilled at the fixed
+/// auction price rather than the bonding curve price.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct AuctionPurchaseEvent {
+    pub buyer: Address,
+    pub creator_id: Address,
+    pub quantity: u32,
+    pub price_paid: i128,
+    pub new_supply: u32,
+    pub auction_sold: u32,
+    pub ledger: u32,
+}
+
+/// Shared auction purchase event topics tuple.
+pub fn auction_purchase_topics(creator: &Address, buyer: &Address) -> (Symbol, Address, Address) {
+    (AUCTION_PURCHASE_EVENT_NAME, creator.clone(), buyer.clone())
+}
+
+// ============================================================================
+// Co-creator removal (#791)
+// ============================================================================
+
+/// Event name for a co-creator being removed.
+pub const CO_CREATOR_REMOVED_EVENT_NAME: Symbol = symbol_short!("cc_rm");
+
+/// Stable co-creator removed event payload for downstream indexers.
+///
+/// Event shape:
+/// - topics: `(CO_CREATOR_REMOVED_EVENT_NAME, creator_id, co_creator)`
+/// - data: `CoCreatorRemovedEvent`
+///
+/// Emitted inside `remove_co_creator` when a creator removes their co-creator split.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct CoCreatorRemovedEvent {
+    /// Address of the creator whose co-creator was removed.
+    pub creator_id: Address,
+    /// Address of the co-creator that was removed.
+    pub co_creator: Address,
+}
+
+/// Shared co-creator removed event topics tuple.
+pub fn co_creator_removed_topics(
+    creator_id: &Address,
+    co_creator: &Address,
+) -> (Symbol, Address, Address) {
+    (
+        CO_CREATOR_REMOVED_EVENT_NAME,
+        creator_id.clone(),
+        co_creator.clone(),
+    )
+}
+
+// ============================================================================
+// Pre-launch auction configuration (#790)
+// ============================================================================
+
+/// Event name for an auction being configured.
+pub const AUCTION_CONFIGURED_EVENT_NAME: Symbol = symbol_short!("auc_cfg");
+
+/// Stable auction configured event payload for downstream indexers.
+///
+/// Event shape:
+/// - topics: `(AUCTION_CONFIGURED_EVENT_NAME, creator_id)`
+/// - data: `AuctionConfiguredEvent`
+///
+/// Emitted inside `configure_auction` when a creator sets up a pre-launch auction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct AuctionConfiguredEvent {
+    /// Address of the creator configuring the auction.
+    pub creator_id: Address,
+    /// Fixed price per key during the auction.
+    pub auction_price: i128,
+    /// Number of keys available in the auction.
+    pub auction_supply: u32,
+}
+
+/// Shared auction configured event topics tuple.
+pub fn auction_configured_topics(creator: &Address) -> (Symbol, Address) {
+    (AUCTION_CONFIGURED_EVENT_NAME, creator.clone())
+}
+
+/// Event name for an auction being cancelled.
+pub const AUCTION_CANCELLED_EVENT_NAME: Symbol = symbol_short!("auc_cxl");
+
+/// Stable auction cancelled event payload for downstream indexers.
+///
+/// Event shape:
+/// - topics: `(AUCTION_CANCELLED_EVENT_NAME, creator_id)`
+/// - data: `AuctionCancelledEvent`
+///
+/// Emitted inside `cancel_auction` when a creator cancels their pre-launch auction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct AuctionCancelledEvent {
+    /// Address of the creator whose auction was cancelled.
+    pub creator_id: Address,
+}
+
+/// Shared auction cancelled event topics tuple.
+pub fn auction_cancelled_topics(creator: &Address) -> (Symbol, Address) {
+    (AUCTION_CANCELLED_EVENT_NAME, creator.clone())
+}

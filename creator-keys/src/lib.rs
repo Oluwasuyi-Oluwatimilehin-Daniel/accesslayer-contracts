@@ -64,6 +64,7 @@ pub enum ContractError {
     AirdropRecipientLimitExceeded = 33,
     InvalidReferrer = 34,
     WalletCapExceeded = 35,
+    CooldownActive = 36,
     WalletBlacklisted = 37,
     SchemaVersionTooOld = 38,
     SchemaVersionUnsupported = 39,
@@ -597,12 +598,20 @@ pub mod constants {
             DataKey::QuorumBps(creator.clone())
         }
 
-        pub fn last_buy_ledger(creator: &Address, holder: &Address) -> DataKey {
-            DataKey::LastBuyLedger(creator.clone(), holder.clone())
-        }
-
         pub fn buy_cooldown(creator: &Address) -> DataKey {
             DataKey::BuyCooldown(creator.clone())
+        }
+
+        pub fn total_staked(creator: &Address) -> DataKey {
+            DataKey::TotalStaked(creator.clone())
+        }
+
+        pub fn stake_unlock_ledger(creator: &Address, holder: &Address) -> DataKey {
+            DataKey::StakeUnlockLedger(creator.clone(), holder.clone())
+        }
+
+        pub fn auction_config(creator: &Address) -> DataKey {
+            DataKey::AuctionConfig(creator.clone())
         }
     }
 
@@ -1006,6 +1015,14 @@ pub enum DataKey {
     /// (creator, holder) -> timestamp of the holder's most recent buy, used by
     /// the anti-flash-trade sell lockup window (#784).
     LastBuyTimestamp(Address, Address),
+    /// Lockup duration in seconds for sell lockup enforcement.
+    LockupDurationSecs,
+    /// Per-creator quorum basis points for governance proposals.
+    QuorumBps(Address),
+    /// Per-creator holder cap in basis points (max % of supply one wallet may hold).
+    HolderCapBps(Address),
+    /// Protocol fee basis points.
+    ProtocolFeeBps,
     /// Protocol-wide emergency trading halt flag (#784). When `true`, every
     /// buy and sell is rejected regardless of per-key pause state.
     GlobalTradingPaused,
@@ -1013,9 +1030,20 @@ pub enum DataKey {
     GlobalPauseVote(Address),
     GlobalResumeVote(Address),
     SelfFrozenBalance(Address, Address),
-    /// (creator, holder) -> ledger of the holder's most recent buy.
-    /// Used by the flash-loan guard and the per-wallet cooldown check.
-    LastBuyLedger(Address, Address),
+    /// Per-creator staking position. Keyed `(creator, holder, stake_id)`.
+    StakePosition(Address, Address, u32),
+    /// Per-creator staking rewards pool and cross-holder staked-key total.
+    StakingRewardsPool(Address),
+    /// Ledger sequence when the first key was bought for a creator.
+    CreatedAtLedger(Address),
+    /// Custom launch penalty basis points for a creator (0 = use default).
+    LaunchPenaltyBps(Address),
+    /// Per-(creator, holder) stake unlock ledger sequence.
+    StakeUnlockLedger(Address, Address),
+    /// Total keys currently staked for a creator across all holders.
+    TotalStaked(Address),
+    /// Pre-launch auction configuration for a creator.
+    AuctionConfig(Address),
     /// Per-creator buy cooldown in ledgers. A value of `0` (or absent) means
     /// no cooldown is configured. Set via `set_buy_cooldown`.
     BuyCooldown(Address),
