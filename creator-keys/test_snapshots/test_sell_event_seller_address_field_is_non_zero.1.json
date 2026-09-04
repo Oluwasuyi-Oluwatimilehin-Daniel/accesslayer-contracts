@@ -791,6 +791,14 @@
                 },
                 {
                   "key": {
+                    "symbol": "new_supply"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "proceeds"
                   },
                   "val": {
