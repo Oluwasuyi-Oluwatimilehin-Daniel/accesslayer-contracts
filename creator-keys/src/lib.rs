@@ -699,6 +699,26 @@ pub struct QuoteResponse {
 /// Shared result type for read-only quote methods.
 pub type QuoteViewResult = Result<QuoteResponse, ContractError>;
 
+/// Response for bonding curve price simulation (simulate_buy / simulate_sell).
+///
+/// Returns both the total cost (or proceeds) and the per-unit price for the
+/// requested quantity, computed from the current bonding curve formula without
+/// writing to any storage entry.
+///
+/// # Fields
+/// - `total_cost` – total cost (buy) or net proceeds (sell) for `quantity` keys
+/// - `per_unit_price` – price per single key (before fees)
+/// - `creator_fee` – total creator fee portion for `quantity`
+/// - `protocol_fee` – total protocol fee portion for `quantity`
+#[derive(Clone, Debug, PartialEq)]
+#[contracttype]
+pub struct SimulateResponse {
+    pub total_cost: i128,
+    pub per_unit_price: i128,
+    pub creator_fee: i128,
+    pub protocol_fee: i128,
+}
+
 /// Initial protocol state version for read-only consumers.
 ///
 /// The actual version is stored in storage and incremented on config updates.
@@ -7374,6 +7394,167 @@ impl CreatorKeysContract {
             keys_bought,
             remainder_returned,
         })
+    }
+
+    /// Read-only view: simulates a buy quote for a given creator and quantity.
+    ///
+    /// Returns a [`SimulateResponse`] containing the total cost, per-unit price,
+    /// creator fee, and protocol fee for purchasing `quantity` keys at the current
+    /// supply level.  Uses the same bonding-curve and auction pricing logic as
+    /// [`CreatorKeysContract::buy_key`] without writing to any storage entry.
+    ///
+    /// # Panics
+    /// - If `quantity` is 0.
+    /// - If the creator is not registered (simulates a 404 / `KeyNotFound`).
+    pub fn simulate_buy(env: Env, creator: Address, quantity: u32) -> SimulateResponse {
+        if quantity == 0 {
+            panic!("quantity must be > 0");
+        }
+
+        let base_price: i128 = env
+            .storage()
+            .persistent()
+            .get(&constants::storage::KEY_PRICE)
+            .expect("KEY_PRICE not set");
+
+        let profile = read_registered_creator_profile(&env, &creator)
+            .expect("creator not registered (KeyNotFound)");
+
+        // Check auction-phase pricing
+        let auction_config_key = constants::storage::auction_config(&creator);
+        let auction_config: Option<AuctionConfig> =
+            env.storage().persistent().get(&auction_config_key);
+        let in_auction = auction_config
+            .as_ref()
+            .map(|config| profile.supply < config.auction_supply)
+            .unwrap_or(false);
+
+        let mut total_cost: i128 = 0;
+        let mut total_creator_fee: i128 = 0;
+        let mut total_protocol_fee: i128 = 0;
+        let mut current_supply = profile.supply;
+
+        let config = read_required_protocol_fee_config(&env).expect("fee config not set");
+
+        for _ in 0..quantity {
+            let price = if in_auction {
+                let ac = auction_config.as_ref().unwrap();
+                if current_supply < ac.auction_supply {
+                    ac.auction_price
+                } else {
+                    compute_bonding_curve_price(&env, &creator, base_price, current_supply)
+                        .expect("bonding curve price overflow")
+                }
+            } else {
+                compute_bonding_curve_price(&env, &creator, base_price, current_supply)
+                    .expect("bonding curve price overflow")
+            };
+
+            let (creator_fee, protocol_fee) =
+                fee::compute_fee_split(price, config.creator_bps, config.protocol_bps);
+
+            total_cost = total_cost
+                .checked_add(price)
+                .expect("overflow in total_cost");
+            total_creator_fee = total_creator_fee
+                .checked_add(creator_fee)
+                .expect("overflow in creator_fee");
+            total_protocol_fee = total_protocol_fee
+                .checked_add(protocol_fee)
+                .expect("overflow in protocol_fee");
+
+            current_supply = current_supply.checked_add(1).expect("supply overflow");
+        }
+
+        let total_with_fees = total_cost
+            .checked_add(total_creator_fee)
+            .expect("overflow")
+            .checked_add(total_protocol_fee)
+            .expect("overflow");
+        let per_unit_price = total_cost / i128::from(quantity);
+
+        SimulateResponse {
+            total_cost: total_with_fees,
+            per_unit_price,
+            creator_fee: total_creator_fee,
+            protocol_fee: total_protocol_fee,
+        }
+    }
+
+    /// Read-only view: simulates a sell quote for a given creator and quantity.
+    ///
+    /// Returns a [`SimulateResponse`] containing the total proceeds (after fees),
+    /// per-unit price, creator fee, and protocol fee for selling `quantity` keys
+    /// at the current supply level.  Uses the same bonding-curve pricing logic as
+    /// [`CreatorKeysContract::sell_key`] without writing to any storage entry.
+    ///
+    /// # Panics
+    /// - If `quantity` is 0.
+    /// - If the creator is not registered (simulates a 404 / `KeyNotFound`).
+    pub fn simulate_sell(env: Env, creator: Address, quantity: u32) -> SimulateResponse {
+        if quantity == 0 {
+            panic!("quantity must be > 0");
+        }
+
+        let base_price: i128 = env
+            .storage()
+            .persistent()
+            .get(&constants::storage::KEY_PRICE)
+            .expect("KEY_PRICE not set");
+
+        let profile = read_registered_creator_profile(&env, &creator)
+            .expect("creator not registered (KeyNotFound)");
+
+        let current_supply = profile.supply;
+        if current_supply == 0 {
+            panic!("creator has zero supply, cannot sell");
+        }
+
+        let config = read_required_protocol_fee_config(&env).expect("fee config not set");
+
+        let mut total_proceeds: i128 = 0;
+        let mut total_creator_fee: i128 = 0;
+        let mut total_protocol_fee: i128 = 0;
+
+        for i in 0..quantity {
+            // Sell prices use sell_supply = supply - 1 for the first key,
+            // then supply - 2, etc. (matching sell_key logic)
+            let sell_supply = current_supply
+                .checked_sub(1)
+                .and_then(|s| s.checked_sub(i))
+                .expect("not enough supply to sell");
+
+            let price = compute_bonding_curve_price(&env, &creator, base_price, sell_supply)
+                .expect("bonding curve price overflow");
+
+            let (creator_fee, protocol_fee) =
+                fee::compute_fee_split(price, config.creator_bps, config.protocol_bps);
+
+            let net_price = price
+                .checked_sub(creator_fee)
+                .expect("sell underflow")
+                .checked_sub(protocol_fee)
+                .expect("sell underflow");
+
+            total_proceeds = total_proceeds
+                .checked_add(net_price)
+                .expect("overflow in total_proceeds");
+            total_creator_fee = total_creator_fee
+                .checked_add(creator_fee)
+                .expect("overflow in creator_fee");
+            total_protocol_fee = total_protocol_fee
+                .checked_add(protocol_fee)
+                .expect("overflow in protocol_fee");
+        }
+
+        let per_unit_price = total_proceeds / i128::from(quantity);
+
+        SimulateResponse {
+            total_cost: total_proceeds,
+            per_unit_price,
+            creator_fee: total_creator_fee,
+            protocol_fee: total_protocol_fee,
+        }
     }
 }
 #[cfg(test)]
