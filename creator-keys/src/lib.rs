@@ -64,6 +64,7 @@ pub enum ContractError {
     AirdropRecipientLimitExceeded = 33,
     InvalidReferrer = 34,
     WalletCapExceeded = 35,
+    CooldownActive = 36,
     WalletBlacklisted = 37,
     SchemaVersionTooOld = 38,
     SchemaVersionUnsupported = 39,
@@ -155,6 +156,24 @@ pub enum FeatureError {
     InvalidAuctionConfig = 6,
     /// `cancel_auction` or `buy_key` (auction path) but no auction is configured.
     NoAuctionConfigured = 7,
+}
+
+/// Errors raised by the buy-cooldown entrypoints
+/// ([`CreatorKeysContract::set_buy_cooldown`], [`CreatorKeysContract::buy_key`]).
+///
+/// Kept separate from [`ContractError`] because Soroban caps `#[contracterror]`
+/// enums at 50 variants and `ContractError` is already at that limit.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum CooldownError {
+    /// The buyer's last purchase was too recent; the per-key cooldown period
+    /// has not yet elapsed.
+    CooldownActive = 1,
+    /// The requested cooldown exceeds the maximum of 720 ledgers (~1 hour).
+    CooldownTooLong = 2,
+    /// The creator address is not registered.
+    NotRegistered = 3,
 }
 
 pub mod fee {
@@ -579,16 +598,20 @@ pub mod constants {
             DataKey::QuorumBps(creator.clone())
         }
 
-        pub fn auction_config(creator: &Address) -> DataKey {
-            DataKey::AuctionConfig(creator.clone())
+        pub fn buy_cooldown(creator: &Address) -> DataKey {
+            DataKey::BuyCooldown(creator.clone())
+        }
+
+        pub fn total_staked(creator: &Address) -> DataKey {
+            DataKey::TotalStaked(creator.clone())
         }
 
         pub fn stake_unlock_ledger(creator: &Address, holder: &Address) -> DataKey {
             DataKey::StakeUnlockLedger(creator.clone(), holder.clone())
         }
 
-        pub fn total_staked(creator: &Address) -> DataKey {
-            DataKey::TotalStaked(creator.clone())
+        pub fn auction_config(creator: &Address) -> DataKey {
+            DataKey::AuctionConfig(creator.clone())
         }
     }
 
@@ -884,6 +907,13 @@ pub const DEFAULT_LAUNCH_PENALTY_BPS: u32 = 500;
 /// Maximum launch penalty basis points (20%).
 pub const MAX_LAUNCH_PENALTY_BPS: u32 = 2_000;
 
+/// Maximum per-wallet buy cooldown in ledgers (~1 hour at 5 s/ledger).
+///
+/// Creators cannot configure a cooldown longer than this value via
+/// [`CreatorKeysContract::set_buy_cooldown`]. A cooldown of 0 means no
+/// restriction (the default when no cooldown has been configured).
+pub const MAX_BUY_COOLDOWN_LEDGERS: u32 = 720;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[contracttype]
 pub enum CurvePreset {
@@ -985,6 +1015,14 @@ pub enum DataKey {
     /// (creator, holder) -> timestamp of the holder's most recent buy, used by
     /// the anti-flash-trade sell lockup window (#784).
     LastBuyTimestamp(Address, Address),
+    /// Lockup duration in seconds for sell lockup enforcement.
+    LockupDurationSecs,
+    /// Per-creator quorum basis points for governance proposals.
+    QuorumBps(Address),
+    /// Per-creator holder cap in basis points (max % of supply one wallet may hold).
+    HolderCapBps(Address),
+    /// Protocol fee basis points.
+    ProtocolFeeBps,
     /// Protocol-wide emergency trading halt flag (#784). When `true`, every
     /// buy and sell is rejected regardless of per-key pause state.
     GlobalTradingPaused,
@@ -992,12 +1030,6 @@ pub enum DataKey {
     GlobalPauseVote(Address),
     GlobalResumeVote(Address),
     SelfFrozenBalance(Address, Address),
-    /// Protocol-wide trade fee in basis points (#774).
-    ProtocolFeeBps,
-    /// Anti-flash-trade sell lockup duration in seconds (#774).
-    LockupDurationSecs,
-    /// Per-creator percentage holding cap in basis points (#774).
-    HolderCapBps(Address),
     /// Per-creator staking position. Keyed `(creator, holder, stake_id)`.
     StakePosition(Address, Address, u32),
     /// Per-creator staking rewards pool and cross-holder staked-key total.
@@ -1006,14 +1038,15 @@ pub enum DataKey {
     CreatedAtLedger(Address),
     /// Custom launch penalty basis points for a creator (0 = use default).
     LaunchPenaltyBps(Address),
-    /// Per-creator governance quorum threshold in basis points.
-    QuorumBps(Address),
-    /// Pre-launch auction configuration for a creator.
-    AuctionConfig(Address),
     /// Per-(creator, holder) stake unlock ledger sequence.
     StakeUnlockLedger(Address, Address),
     /// Total keys currently staked for a creator across all holders.
     TotalStaked(Address),
+    /// Pre-launch auction configuration for a creator.
+    AuctionConfig(Address),
+    /// Per-creator buy cooldown in ledgers. A value of `0` (or absent) means
+    /// no cooldown is configured. Set via `set_buy_cooldown`.
+    BuyCooldown(Address),
 }
 
 /// Time-locked key allocation for creator self-vesting.
@@ -2846,6 +2879,38 @@ impl CreatorKeysContract {
             }
         }
 
+        // Enforce the per-wallet buy cooldown: once a cooldown is configured
+        // by the creator via `set_buy_cooldown`, the same wallet cannot buy
+        // again until `cooldown_ledgers` have elapsed since their last buy.
+        let cooldown_ledgers: u32 = env
+            .storage()
+            .persistent()
+            .get(&constants::storage::buy_cooldown(&creator))
+            .unwrap_or(0);
+        if cooldown_ledgers > 0 {
+            let last_buy_ledger_key = constants::storage::last_buy_ledger(&creator, &buyer);
+            if let Some(last_ledger) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, u32>(&last_buy_ledger_key)
+            {
+                let current_ledger = env.ledger().sequence();
+                let elapsed = current_ledger.saturating_sub(last_ledger);
+                if elapsed < cooldown_ledgers {
+                    let ledgers_remaining = cooldown_ledgers - elapsed;
+                    env.events().publish(
+                        events::cooldown_blocked_topics(&creator, &buyer),
+                        events::CooldownBlockedEvent {
+                            wallet: buyer.clone(),
+                            creator_id: creator.clone(),
+                            ledgers_remaining,
+                        },
+                    );
+                    return Err(ContractError::CooldownActive);
+                }
+            }
+        }
+
         // Settle dividends before balance changes so earnings are captured at old balance.
         settle_holder_dividends(&env, &creator, &buyer, current_balance)?;
 
@@ -2888,6 +2953,8 @@ impl CreatorKeysContract {
 
         // Flash-loan guard (issue #781): record this buy's ledger so sell_key can
         // reject a same-ledger sell of the position just bought.
+        // Also used by the per-wallet cooldown guard to track the most recent
+        // successful buy ledger for each (creator, holder) pair.
         let last_buy_ledger_key = constants::storage::last_buy_ledger(&creator, &buyer);
         env.storage()
             .persistent()
@@ -5173,6 +5240,43 @@ impl CreatorKeysContract {
         env.storage()
             .persistent()
             .get(&constants::storage::holder_cap_bps(&creator))
+    }
+
+    /// Sets the per-wallet buy cooldown for a creator's keys.
+    ///
+    /// Only the key creator may call this. `cooldown_ledgers` must be in
+    /// the range `0..=720` (≈ 1 hour at 5 s/ledger); values above 720 return
+    /// [`CooldownError::CooldownTooLong`]. A value of `0` disables the
+    /// cooldown (the default when no cooldown has been configured).
+    ///
+    /// Once configured, `buy_key` rejects consecutive purchases by the same
+    /// wallet within the cooldown window with [`ContractError::CooldownActive`]
+    /// and emits a [`events::COOLDOWN_BLOCKED_EVENT_NAME`] event.
+    pub fn set_buy_cooldown(
+        env: Env,
+        creator: Address,
+        cooldown_ledgers: u32,
+    ) -> Result<(), CooldownError> {
+        creator.require_auth();
+        read_registered_creator_profile(&env, &creator)
+            .map_err(|_| CooldownError::NotRegistered)?;
+        if cooldown_ledgers > MAX_BUY_COOLDOWN_LEDGERS {
+            return Err(CooldownError::CooldownTooLong);
+        }
+        let key = constants::storage::buy_cooldown(&creator);
+        env.storage().persistent().set(&key, &cooldown_ledgers);
+        extend_key_ttl_to_full_window(&env, &key);
+        Ok(())
+    }
+
+    /// Read-only view: returns the configured buy cooldown in ledgers for a creator.
+    ///
+    /// Returns `0` (no cooldown) when none has been configured.
+    pub fn get_buy_cooldown(env: Env, creator: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&constants::storage::buy_cooldown(&creator))
+            .unwrap_or(0)
     }
 
     /// Sets the launch penalty basis points for a creator's keys.
